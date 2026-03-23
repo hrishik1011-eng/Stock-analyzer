@@ -1103,27 +1103,28 @@ else:
                             st.plotly_chart(fig2, use_container_width=True)
 
                     with dtab2:
+                        bm = benchmarks.get(scores.get("cap_type","Large Cap"), {})
                         pe_val = fund.get("pe_ratio")
                         pe_sig = "⚪"
                         if pe_val:
                             pe_sig = "✅" if pe_val <= norms["pe_mid"] else ("⚠️" if pe_val <= norms["pe_max"] else "❌")
                         roe = fund.get("roe"); pm = fund.get("profit_margin")
                         rg  = fund.get("revenue_growth"); eg = fund.get("earnings_growth"); cr = fund.get("current_ratio")
-                        st.info(f"🏭 Sector: **{sector}**  |  P/E norm: {norms['pe_mid']}–{norms['pe_max']}x  |  Min ROE: {norms['roe_min']*100:.0f}%  |  {'🏦 D/E skipped' if norms['skip_de'] else ''}")
+                        st.info(f"🏭 Sector: **{sector}** · {cap_icon} **{cap_type}**  |  P/E norm: {norms['pe_mid']}–{norms['pe_max']}x  |  Min ROE: {norms['roe_min']*100:.0f}%  |  {'🏦 D/E skipped' if norms['skip_de'] else ''}")
                         rows = [
                             ["P/E Ratio",        fmt(fund.get("pe_ratio")),           f"{norms['pe_mid']}–{norms['pe_max']}x (sector)", pe_sig],
-                            ["P/B Ratio",        fmt(fund.get("pb_ratio")),           fmt(benchmark.get("pb_ratio")),    cmp(fund.get("pb_ratio"), benchmark.get("pb_ratio"), False)],
+                            ["P/B Ratio",        fmt(fund.get("pb_ratio")),           fmt(bm.get("pb_ratio")),    cmp(fund.get("pb_ratio"), bm.get("pb_ratio"), False)],
                             ["ROE",              fmt(fund.get("roe"), True),           f"≥{norms['roe_min']*100:.0f}% (sector min)",      "✅" if roe and roe>=norms["roe_min"] else "❌"],
-                            ["ROA",              fmt(fund.get("roa"), True),           fmt(benchmark.get("roa"), True),   cmp(fund.get("roa"), benchmark.get("roa"), True)],
-                            ["Debt / Equity",    fmt(fund.get("debt_to_equity")),     "Skipped" if norms["skip_de"] else fmt(benchmark.get("debt_to_equity")), "⚪" if norms["skip_de"] else cmp(fund.get("debt_to_equity"), benchmark.get("debt_to_equity"), False)],
-                            ["Gross Margin",     fmt(fund.get("gross_margin"), True),  fmt(benchmark.get("gross_margin"), True), cmp(fund.get("gross_margin"), benchmark.get("gross_margin"), True)],
-                            ["Oper. Margin",     fmt(fund.get("operating_margin"),True),fmt(benchmark.get("operating_margin"),True), cmp(fund.get("operating_margin"), benchmark.get("operating_margin"), True)],
+                            ["ROA",              fmt(fund.get("roa"), True),           fmt(bm.get("roa"), True),   cmp(fund.get("roa"), bm.get("roa"), True)],
+                            ["Debt / Equity",    fmt(fund.get("debt_to_equity")),     "Skipped" if norms["skip_de"] else fmt(bm.get("debt_to_equity")), "⚪" if norms["skip_de"] else cmp(fund.get("debt_to_equity"), bm.get("debt_to_equity"), False)],
+                            ["Gross Margin",     fmt(fund.get("gross_margin"), True),  fmt(bm.get("gross_margin"), True), cmp(fund.get("gross_margin"), bm.get("gross_margin"), True)],
+                            ["Oper. Margin",     fmt(fund.get("operating_margin"),True),fmt(bm.get("operating_margin"),True), cmp(fund.get("operating_margin"), bm.get("operating_margin"), True)],
                             ["Profit Margin",    fmt(fund.get("profit_margin"), True), f"≥{norms['margin_min']*100:.0f}% (sector min)",   "✅" if pm and pm>=norms["margin_min"] else "❌"],
                             ["Revenue Growth",   fmt(fund.get("revenue_growth"), True),f"≥{norms['growth_min']*100:.0f}% (sector min)",   "✅" if rg and rg>norms["growth_min"] else "❌"],
                             ["Earnings Growth",  fmt(fund.get("earnings_growth"),True),f"≥{norms['growth_min']*100:.0f}% (sector min)",   "✅" if eg and eg>norms["growth_min"] else "❌"],
-                            ["Current Ratio",    fmt(fund.get("current_ratio")),      "Skipped" if norms["skip_cr"] else "1.5+",          "⚪" if norms["skip_cr"] else ("✅" if cr and cr>1.5 else "❌")],
-                            ["EV/EBITDA",        fmt(fund.get("ev_ebitda")),          fmt(benchmark.get("ev_ebitda")),   ""],
-                            ["RSI (14)",         str(tech.get("rsi","N/A")),           "40–65 ideal",                     "✅" if tech.get("rsi") and 40<=tech.get("rsi")<=65 else "⚠️"],
+                            ["Current Ratio",    fmt(fund.get("current_ratio")),      "Skipped" if norms["skip_cr"] else "1.2+",          "⚪" if norms["skip_cr"] else ("✅" if cr and cr>1.2 else "❌")],
+                            ["EV/EBITDA",        fmt(fund.get("ev_ebitda")),          fmt(bm.get("ev_ebitda")),   ""],
+                            ["RSI (14)",         str(tech.get("rsi","N/A")),           "35–70 ideal",                     "✅" if tech.get("rsi") and 35<=tech.get("rsi")<=70 else "⚠️"],
                             ["Above 50-day MA",  "Yes" if tech.get("above_ma50")  else "No", "Yes preferred", "✅" if tech.get("above_ma50")  else "❌"],
                             ["Above 200-day MA", "Yes" if tech.get("above_ma200") else "No", "Yes preferred", "✅" if tech.get("above_ma200") else "❌"],
                             ["MACD Bullish",     "Yes" if tech.get("macd_bullish") else "No","Yes preferred", "✅" if tech.get("macd_bullish") else "❌"],
