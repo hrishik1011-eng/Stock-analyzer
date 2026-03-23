@@ -162,71 +162,118 @@ div[data-testid="stSidebarContent"] {
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# SECTOR-BALANCED BENCHMARK TICKERS
-# 2-3 stocks per sector, covering all major
-# Nifty 50 sectors evenly
+# 3-INDEX BENCHMARK FRAMEWORK
+# Large Cap → Nifty 50
+# Mid Cap   → Nifty Midcap 150
+# Small Cap → Nifty Smallcap 250
 # ─────────────────────────────────────────────
-BENCHMARK_TICKERS = {
-    "Banking & Finance":   ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "KOTAKBANK.NS", "AXISBANK.NS"],
-    "IT & Technology":     ["TCS.NS", "INFY.NS", "WIPRO.NS"],
-    "Energy & Oil":        ["RELIANCE.NS", "ONGC.NS", "BPCL.NS"],
-    "FMCG & Consumer":     ["HINDUNILVR.NS", "ITC.NS", "NESTLEIND.NS", "BRITANNIA.NS"],
-    "Auto":                ["MARUTI.NS", "TATAMOTORS.NS", "M&M.NS"],
-    "Pharma":              ["SUNPHARMA.NS", "DRREDDY.NS", "CIPLA.NS"],
-    "Industrials & Infra": ["LT.NS", "POWERGRID.NS", "NTPC.NS"],
-    "Metals & Materials":  ["TATASTEEL.NS", "HINDALCO.NS", "JSWSTEEL.NS"],
-    "Telecom":             ["BHARTIARTL.NS"],
-    "Consumer Discretionary": ["TITAN.NS", "ASIANPAINT.NS"],
-    "Cement":              ["ULTRACEMCO.NS", "GRASIM.NS"],
+
+# Market cap thresholds (INR)
+LARGE_CAP_THRESHOLD = 200_000_000_000   # ₹20,000 Cr
+MID_CAP_THRESHOLD   =  50_000_000_000   # ₹5,000 Cr
+
+LARGE_CAP_TICKERS = {
+    "Banking & Finance":      ["HDFCBANK.NS","ICICIBANK.NS","SBIN.NS","KOTAKBANK.NS","AXISBANK.NS"],
+    "IT & Technology":        ["TCS.NS","INFY.NS","WIPRO.NS"],
+    "Energy & Oil":           ["RELIANCE.NS","ONGC.NS","BPCL.NS"],
+    "FMCG & Consumer":        ["HINDUNILVR.NS","ITC.NS","NESTLEIND.NS","BRITANNIA.NS"],
+    "Auto":                   ["MARUTI.NS","TATAMOTORS.NS","M&M.NS"],
+    "Pharma":                 ["SUNPHARMA.NS","DRREDDY.NS","CIPLA.NS"],
+    "Industrials & Infra":    ["LT.NS","POWERGRID.NS","NTPC.NS"],
+    "Metals & Materials":     ["TATASTEEL.NS","HINDALCO.NS","JSWSTEEL.NS"],
+    "Telecom":                ["BHARTIARTL.NS"],
+    "Consumer Discretionary": ["TITAN.NS","ASIANPAINT.NS"],
+    "Cement":                 ["ULTRACEMCO.NS","GRASIM.NS"],
 }
 
-# Flat list for easy iteration
-ALL_BENCHMARK_TICKERS = [t for tickers in BENCHMARK_TICKERS.values() for t in tickers]
+MIDCAP_TICKERS = {
+    "Banking & Finance":      ["FEDERALBNK.NS","IDFCFIRSTB.NS","BANDHANBNK.NS"],
+    "IT & Technology":        ["MPHASIS.NS","LTIM.NS","PERSISTENT.NS"],
+    "Pharma":                 ["TORNTPHARM.NS","ALKEM.NS","LALPATHLAB.NS"],
+    "Auto & Ancillaries":     ["MOTHERSON.NS","BALKRISIND.NS","ESCORTS.NS"],
+    "Consumer":               ["VOLTAS.NS","WHIRLPOOL.NS","TRENT.NS"],
+    "Industrials":            ["CUMMINSIND.NS","THERMAX.NS","BHEL.NS"],
+    "Chemicals":              ["PIIND.NS","AAVAS.NS","ATUL.NS"],
+    "Real Estate":            ["GODREJPROP.NS","OBEROIRLTY.NS"],
+}
+
+SMALLCAP_TICKERS = {
+    "Banking & Finance":      ["RBLBANK.NS","UJJIVANSFB.NS"],
+    "IT & Technology":        ["TANLA.NS","INTELLECT.NS"],
+    "Pharma":                 ["GRANULES.NS","SUVEN.NS"],
+    "Consumer":               ["VSTIND.NS","SAPPHIRE.NS"],
+    "Industrials":            ["GRINDWELL.NS","RATNAMANI.NS"],
+    "Chemicals":              ["FINEORG.NS","NAVINFLUOR.NS"],
+}
+
+ALL_LARGE_TICKERS  = [t for v in LARGE_CAP_TICKERS.values()  for t in v]
+ALL_MID_TICKERS    = [t for v in MIDCAP_TICKERS.values()      for t in v]
+ALL_SMALL_TICKERS  = [t for v in SMALLCAP_TICKERS.values()    for t in v]
+
+def classify_stock(market_cap):
+    """Classify stock into Large / Mid / Small cap."""
+    if market_cap is None:
+        return "Large Cap", "🔵"
+    if market_cap >= LARGE_CAP_THRESHOLD:
+        return "Large Cap", "🔵"
+    elif market_cap >= MID_CAP_THRESHOLD:
+        return "Mid Cap", "🟡"
+    else:
+        return "Small Cap", "🟢"
+
+# ─────────────────────────────────────────────
+# CAP-SPECIFIC SCORING WEIGHTS
+# Growth matters more for small/mid
+# Stability matters more for large
+# ─────────────────────────────────────────────
+CAP_WEIGHTS = {
+    "Large Cap": {
+        "rule": 0.35, "ml": 0.25, "cashflow": 0.20, "governance": 0.12, "moat": 0.08
+    },
+    "Mid Cap": {
+        "rule": 0.30, "ml": 0.25, "cashflow": 0.18, "governance": 0.12, "moat": 0.15
+    },
+    "Small Cap": {
+        "rule": 0.28, "ml": 0.22, "cashflow": 0.15, "governance": 0.20, "moat": 0.15
+    },
+}
 
 # ─────────────────────────────────────────────
 # DATA FUNCTIONS
 # ─────────────────────────────────────────────
-@st.cache_data(ttl=3600)
-def build_benchmark():
-    """
-    Build a sector-balanced benchmark.
-    Fetches 2-3 stocks per sector and computes
-    median per sector first, then overall median
-    of sector medians — so no sector dominates.
-    """
-    sector_records = {s: [] for s in BENCHMARK_TICKERS}
+def _build_single_benchmark(ticker_dict, label):
+    """Build sector-balanced benchmark for one cap category."""
     metrics = ["pe_ratio","pb_ratio","roe","roa","debt_to_equity",
                "revenue_growth","earnings_growth","profit_margin",
                "gross_margin","operating_margin","current_ratio",
                "institutional_holding"]
+    sector_records = {s: [] for s in ticker_dict}
 
-    for sector_name, tickers in BENCHMARK_TICKERS.items():
+    for sector_name, tickers in ticker_dict.items():
         for t in tickers:
             try:
                 info = yf.Ticker(t).info
                 sector_records[sector_name].append({
-                    "pe_ratio":           info.get("trailingPE"),
-                    "pb_ratio":           info.get("priceToBook"),
-                    "roe":                info.get("returnOnEquity"),
-                    "roa":                info.get("returnOnAssets"),
-                    "debt_to_equity":     info.get("debtToEquity"),
-                    "revenue_growth":     info.get("revenueGrowth"),
-                    "earnings_growth":    info.get("earningsGrowth"),
-                    "profit_margin":      info.get("profitMargins"),
-                    "gross_margin":       info.get("grossMargins"),
-                    "operating_margin":   info.get("operatingMargins"),
-                    "current_ratio":      info.get("currentRatio"),
+                    "pe_ratio":              info.get("trailingPE"),
+                    "pb_ratio":              info.get("priceToBook"),
+                    "roe":                   info.get("returnOnEquity"),
+                    "roa":                   info.get("returnOnAssets"),
+                    "debt_to_equity":        info.get("debtToEquity"),
+                    "revenue_growth":        info.get("revenueGrowth"),
+                    "earnings_growth":       info.get("earningsGrowth"),
+                    "profit_margin":         info.get("profitMargins"),
+                    "gross_margin":          info.get("grossMargins"),
+                    "operating_margin":      info.get("operatingMargins"),
+                    "current_ratio":         info.get("currentRatio"),
                     "institutional_holding": info.get("heldPercentInstitutions"),
                 })
                 time.sleep(0.2)
             except:
                 pass
 
-    # Step 1: median per sector
     sector_medians = []
     for sector_name, records in sector_records.items():
-        if not records:
-            continue
+        if not records: continue
         df = pd.DataFrame(records)
         sector_med = {}
         for col in metrics:
@@ -237,14 +284,19 @@ def build_benchmark():
         if sector_med:
             sector_medians.append(sector_med)
 
-    # Step 2: median of sector medians = balanced benchmark
+    if not sector_medians:
+        return {}
     df_med = pd.DataFrame(sector_medians)
-    benchmark = {}
-    for col in metrics:
-        if col in df_med.columns:
-            benchmark[col] = df_med[col].dropna().median()
+    return {col: df_med[col].dropna().median() for col in metrics if col in df_med.columns}
 
-    return benchmark, sector_records
+@st.cache_data(ttl=3600)
+def build_all_benchmarks():
+    """Build all 3 benchmarks. Cached for 1 hour."""
+    large  = _build_single_benchmark(LARGE_CAP_TICKERS,  "Large Cap")
+    mid    = _build_single_benchmark(MIDCAP_TICKERS,     "Mid Cap")
+    small  = _build_single_benchmark(SMALLCAP_TICKERS,   "Small Cap")
+    return {"Large Cap": large, "Mid Cap": mid, "Small Cap": small}
+
 
 @st.cache_data(ttl=900)
 def get_stock_data(ticker):
@@ -364,21 +416,33 @@ def get_sector_norms(sector: str) -> dict:
             return SECTOR_NORMS[key]
     return DEFAULT_NORMS
 
-def score_stock(fund, tech, cf, benchmark):
+def score_stock(fund, tech, cf, benchmarks):
     scores = {}
     sector = fund.get("sector", "N/A")
     norms  = get_sector_norms(sector)
     scores["sector"] = sector
     scores["norms"]  = norms
 
+    # ── Classify by market cap → pick right benchmark ──
+    mc       = fund.get("market_cap")
+    cap_type, cap_icon = classify_stock(mc)
+    benchmark = benchmarks.get(cap_type, benchmarks.get("Large Cap", {}))
+    scores["cap_type"] = cap_type
+    scores["cap_icon"] = cap_icon
+
+    # ── Cap-specific scoring adjustments ──
+    # Small/mid caps get more credit for growth, less penalised for thin margins
+    growth_bonus    = 1.5 if cap_type == "Small Cap" else (1.2 if cap_type == "Mid Cap" else 1.0)
+    margin_leniency = 0.7 if cap_type == "Small Cap" else (0.85 if cap_type == "Mid Cap" else 1.0)
+
     pe  = fund.get("pe_ratio")
     roe = fund.get("roe")
-    de  = fund.get("debt_to_equity");  b_de  = benchmark.get("debt_to_equity")
+    de  = fund.get("debt_to_equity");  b_de = benchmark.get("debt_to_equity")
     rg  = fund.get("revenue_growth")
     eg  = fund.get("earnings_growth")
-    pm  = fund.get("profit_margin");   b_pm  = benchmark.get("profit_margin")
+    pm  = fund.get("profit_margin")
     cr  = fund.get("current_ratio")
-    pb  = fund.get("pb_ratio");        b_pb  = benchmark.get("pb_ratio")
+    pb  = fund.get("pb_ratio");        b_pb = benchmark.get("pb_ratio")
     rsi = tech.get("rsi")
     above50  = tech.get("above_ma50")
     above200 = tech.get("above_ma200")
@@ -388,44 +452,50 @@ def score_stock(fund, tech, cf, benchmark):
     r = 0; r_max = 13
     pe_notes = []
 
+    # PE — use wider ceiling for small/mid (they grow faster, deserve premium)
+    pe_max_adj = norms["pe_max"] * (1.3 if cap_type == "Small Cap" else (1.15 if cap_type == "Mid Cap" else 1.0))
+    pe_mid_adj = norms["pe_mid"] * (1.3 if cap_type == "Small Cap" else (1.15 if cap_type == "Mid Cap" else 1.0))
+
     if pe:
-        if pe <= norms["pe_mid"]:
+        if pe <= pe_mid_adj:
             r += 2
-            pe_notes.append(f"✅ PE {pe:.1f} ≤ sector midpoint {norms['pe_mid']} — attractively priced for {sector}")
-        elif pe <= norms["pe_max"]:
+            pe_notes.append(f"✅ PE {pe:.1f} ≤ {cap_type} midpoint {pe_mid_adj:.0f} — attractively priced")
+        elif pe <= pe_max_adj:
             r += 1
-            pe_notes.append(f"✅ PE {pe:.1f} within sector norm (≤{norms['pe_max']}) for {sector}")
+            pe_notes.append(f"✅ PE {pe:.1f} within {cap_type} norm (≤{pe_max_adj:.0f})")
         else:
-            pe_notes.append(f"❌ PE {pe:.1f} above sector ceiling {norms['pe_max']} for {sector} — expensive")
+            pe_notes.append(f"❌ PE {pe:.1f} above {cap_type} ceiling {pe_max_adj:.0f} — expensive")
     scores["pe_notes"] = pe_notes
 
-    # ROE — sector-adjusted, 1 point if meets min, 2 if 25% above
+    # ROE
     if roe:
         if roe >= norms["roe_min"] * 1.25:
             r += 2
         elif roe >= norms["roe_min"]:
             r += 1
 
-    # Debt/Equity — skip for banks/financials
+    # Debt/Equity
     if not norms["skip_de"]:
         if de and b_de and de < b_de: r += 1
 
-    # Growth — sector-adjusted, award point if either revenue OR earnings beats threshold
-    if rg and rg > norms["growth_min"]: r += 1
-    if eg and eg > norms["growth_min"]: r += 1
+    # Growth — small/mid get bonus: lower threshold needed to score
+    growth_threshold = norms["growth_min"] / growth_bonus
+    if rg and rg > growth_threshold: r += 1
+    if eg and eg > growth_threshold: r += 1
 
-    # Profit margin — sector-adjusted
-    if pm and pm > norms["margin_min"]: r += 1
+    # Profit margin — leniency for small/mid
+    margin_threshold = norms["margin_min"] * margin_leniency
+    if pm and pm > margin_threshold: r += 1
 
-    # Current ratio — skip for banks, relaxed to 1.2 (was 1.5)
+    # Current ratio
     if not norms["skip_cr"]:
         if cr and cr > 1.2: r += 1
 
-    # P/B — extra weight for banks
+    # P/B focus for banks
     if norms["pb_focus"] and pb:
         if pb < 2.5: r += 1
 
-    # Technicals — RSI range widened to 35–70 (was 40–65)
+    # Technicals
     if rsi:
         r += 2 if 35<=rsi<=70 else (1 if rsi<35 else 0)
     if above50:  r += 1
@@ -435,20 +505,23 @@ def score_stock(fund, tech, cf, benchmark):
     scores["rule"] = (min(r, r_max), r_max)
 
     # ── Governance Score ──
+    # Small caps: promoter holding is MORE important (insider conviction)
     g = 0; g_max = 4
     promoter = fund.get("promoter_holding")
     inst     = fund.get("institutional_holding"); b_inst = benchmark.get("institutional_holding")
     roa      = fund.get("roa");                   b_roa  = benchmark.get("roa")
-    # Promoter threshold relaxed to 35% (was 45%)
-    if promoter and promoter >= 0.35: g += 1
+
+    promoter_min = 0.50 if cap_type == "Small Cap" else (0.40 if cap_type == "Mid Cap" else 0.35)
+    if promoter and promoter >= promoter_min: g += 1
+    elif promoter and promoter >= 0.25: g += 0  # too low for any cap
     if inst and b_inst and inst >= b_inst: g += 1
-    elif inst and inst >= 0.20: g += 1          # fallback if benchmark missing
+    elif inst and inst >= 0.15: g += 1
     if pb and b_pb and 1.0 <= pb <= b_pb * 2.5: g += 1
     if roa and b_roa and roa > b_roa: g += 1
-    elif roa and roa > 0.05: g += 1             # fallback: at least 5% ROA
+    elif roa and roa > 0.04: g += 1
     scores["governance"] = (g, g_max)
 
-    # ── Cash Flow Score — missing data = neutral not zero ──
+    # ── Cash Flow Score ──
     c = 0; c_max = 5
     cfo       = cf.get("cfo")
     fcf       = cf.get("fcf")
@@ -458,64 +531,65 @@ def score_stock(fund, tech, cf, benchmark):
     if cfo is not None:
         c += 1 if cfo > 0 else 0
     else:
-        c += 1          # missing CFO data → neutral, give benefit of doubt
+        c += 1
 
     if cfo_pat is not None:
         c += 2 if cfo_pat >= 0.7 else (1 if cfo_pat >= 0.4 else 0)
     else:
-        c += 1          # missing CFO/PAT → neutral
+        c += 1
 
     if fcf is not None:
         c += 1 if fcf > 0 else 0
     else:
-        c += 1          # missing FCF → neutral
+        c += 1
 
     capex_threshold = 0.20 if sector and any(s in sector for s in ["Energy","Utilities","Industrials","Materials"]) else 0.12
     if capex_rev is not None:
         c += 1 if capex_rev <= capex_threshold else 0
     else:
-        c += 1          # missing capex → neutral
+        c += 1
 
     scores["cashflow"] = (min(c, c_max), c_max)
 
     # ── Moat Score ──
     m = 0; m_max = 5
-    gm   = fund.get("gross_margin");    b_gm = benchmark.get("gross_margin")
-    om   = fund.get("operating_margin"); b_om = benchmark.get("operating_margin")
-    mc   = fund.get("market_cap")
+    gm = fund.get("gross_margin");     b_gm = benchmark.get("gross_margin")
+    om = fund.get("operating_margin"); b_om = benchmark.get("operating_margin")
+
     if roe and norms["roe_min"]:
         m += 2 if roe >= norms["roe_min"]*1.4 else (1 if roe >= norms["roe_min"] else 0)
     if gm and b_gm and gm >= b_gm: m += 1
-    elif gm and gm > 0.15: m += 1               # fallback: decent gross margin
+    elif gm and gm > 0.12: m += 1
     if om and b_om and om >= b_om: m += 1
-    elif om and om > 0.10: m += 1               # fallback: decent operating margin
-    # Market cap threshold lowered to 500B (was 1T) to include mid-caps
-    if mc and mc >= 5e11: m += 1
+    elif om and om > 0.08: m += 1
+    # Market cap threshold per category
+    mc_moat = 5e11 if cap_type == "Large Cap" else (5e10 if cap_type == "Mid Cap" else 5e9)
+    if mc and mc >= mc_moat: m += 1
     scores["moat"] = (min(m, m_max), m_max)
 
     # ── ML Confidence ──
     def norm(val, ref, hib=True):
-        if not val or not ref or ref == 0: return 0.5  # missing = neutral
+        if not val or not ref or ref == 0: return 0.5
         ratio = val / ref
         return min(ratio, 2) / 2 if hib else min(ref / val, 2) / 2
 
-    pe_ref = norms["pe_mid"]
+    pe_ref = pe_mid_adj
     features = [
         norm(roe, norms["roe_min"], True),
         norm(pe, pe_ref, False),
         0.5 if norms["skip_de"] else norm(de, b_de, False),
-        norm(pm, norms["margin_min"], True),
-        norm(rg, norms["growth_min"], True),
-        norm(eg, norms["growth_min"], True),
+        norm(pm, margin_threshold, True),
+        norm(rg, growth_threshold, True),
+        norm(eg, growth_threshold, True),
         0.80 if (rsi and 35<=rsi<=70) else (0.50 if rsi and rsi<35 else 0.20),
         1.0 if above50  else 0.0,
         1.0 if above200 else 0.0,
         1.0 if macd_b   else 0.0,
-        1.0 if tech.get("vol_trend_up") else 0.5,   # missing vol = neutral
-        min((fund.get("promoter_holding") or 0.35) / 0.5, 1.0),  # default 35% if missing
+        1.0 if tech.get("vol_trend_up") else 0.5,
+        min((fund.get("promoter_holding") or 0.35) / 0.5, 1.0),
         min((fund.get("institutional_holding") or 0.20) / 0.3, 1.0),
-        min((cf.get("cfo_to_pat") or 0.7) / 1.0, 1.0),           # default 0.7 if missing
-        1.0 if (fcf and fcf > 0) else 0.5,          # missing FCF = neutral
+        min((cf.get("cfo_to_pat") or 0.7) / 1.0, 1.0),
+        1.0 if (fcf and fcf > 0) else 0.5,
     ]
     weights = [0.10, 0.08, 0.06, 0.07, 0.07, 0.06, 0.08, 0.07, 0.08, 0.05, 0.03, 0.07, 0.05, 0.08, 0.06]
     total   = sum(weights)
@@ -523,21 +597,21 @@ def score_stock(fund, tech, cf, benchmark):
     ml_conf = round(sum(f * w for f, w in zip(features, weights)) * 100, 1)
     scores["ml"] = ml_conf
 
-    # ── Blended Final Score ──
+    # ── Blended — cap-specific weights ──
     r_s, r_m = scores["rule"]
     g_s, g_m = scores["governance"]
     c_s, c_m = scores["cashflow"]
     m_s, m_m = scores["moat"]
+    cw = CAP_WEIGHTS[cap_type]
     blended = (
-        (r_s/r_m)*100 * 0.35 +
-        ml_conf       * 0.25 +
-        (c_s/c_m)*100 * 0.20 +
-        (g_s/g_m)*100 * 0.10 +
-        (m_s/m_m)*100 * 0.10
+        (r_s/r_m)*100 * cw["rule"]       +
+        ml_conf       * cw["ml"]         +
+        (c_s/c_m)*100 * cw["cashflow"]   +
+        (g_s/g_m)*100 * cw["governance"] +
+        (m_s/m_m)*100 * cw["moat"]
     )
     scores["blended"] = round(blended, 1)
 
-    # Thresholds lowered to be more realistic for Indian market
     if blended >= 62:   verdict = ("✅ STRONG BUY",    "strong-buy")
     elif blended >= 50: verdict = ("📈 BUY / CONSIDER","buy")
     elif blended >= 38: verdict = ("⚠️ HOLD / WATCH",  "hold")
@@ -777,18 +851,31 @@ else:
     if not tickers:
         st.error("Please enter at least one ticker symbol.")
     else:
-        # Build benchmark
-        with st.spinner("📊 Building sector-balanced benchmark... (first time takes ~45 seconds)"):
-            benchmark, sector_records = build_benchmark()
+        # Build all 3 benchmarks
+        with st.spinner("📊 Building 3-index benchmark (Large/Mid/Small cap)... first time takes ~90 seconds"):
+            benchmarks = build_all_benchmarks()
 
-        with st.expander("📌 View Benchmark Details — Sector-Balanced Nifty 50", expanded=False):
-            st.markdown("The benchmark is built by computing the **median per sector first**, then taking the **median of all sector medians** — so no single sector (e.g. banking) dominates the numbers.")
-            for sector_name, sector_tickers in BENCHMARK_TICKERS.items():
-                st.markdown(f"**{sector_name}:** {', '.join(t.replace('.NS','') for t in sector_tickers)}")
-            st.markdown("---")
-            b_display = [[k, round(v,4)] for k,v in benchmark.items()]
-            st.dataframe(pd.DataFrame(b_display, columns=["Metric","Balanced Median"]), use_container_width=True, hide_index=True)
-        st.success(f"✅ Benchmark ready — {len(ALL_BENCHMARK_TICKERS)} stocks across {len(BENCHMARK_TICKERS)} sectors")
+        with st.expander("📌 View Benchmark Details — 3-Index Framework", expanded=False):
+            st.markdown("Each stock is automatically classified as **Large / Mid / Small cap** based on market cap, then compared against the appropriate index benchmark.")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown("**🔵 Large Cap (Nifty 50)**")
+                st.markdown(f"Market cap ≥ ₹20,000 Cr")
+                for s, tl in LARGE_CAP_TICKERS.items():
+                    st.markdown(f"*{s}:* {', '.join(t.replace('.NS','') for t in tl)}")
+            with c2:
+                st.markdown("**🟡 Mid Cap (Nifty Midcap 150)**")
+                st.markdown(f"Market cap ₹5,000–20,000 Cr")
+                for s, tl in MIDCAP_TICKERS.items():
+                    st.markdown(f"*{s}:* {', '.join(t.replace('.NS','') for t in tl)}")
+            with c3:
+                st.markdown("**🟢 Small Cap (Nifty Smallcap 250)**")
+                st.markdown(f"Market cap < ₹5,000 Cr")
+                for s, tl in SMALLCAP_TICKERS.items():
+                    st.markdown(f"*{s}:* {', '.join(t.replace('.NS','') for t in tl)}")
+
+        total_stocks = len(ALL_LARGE_TICKERS) + len(ALL_MID_TICKERS) + len(ALL_SMALL_TICKERS)
+        st.success(f"✅ Benchmarks ready — {total_stocks} stocks across 3 indices")
 
         # ── Fetch all stock data first ──
         all_data    = {}
@@ -797,7 +884,7 @@ else:
             with st.spinner(f"Fetching {ticker}..."):
                 fund, cf, tech = get_stock_data(ticker)
             if fund:
-                scores = score_stock(fund, cf, tech, benchmark)
+                scores = score_stock(fund, cf, tech, benchmarks)
                 all_data[ticker] = (fund, cf, tech, scores)
             else:
                 st.warning(f"⚠️ Could not fetch data for {ticker} — skipping.")
@@ -840,6 +927,7 @@ else:
                     "Promoter %":       round(f.get("promoter_holding",0)*100,1) if f.get("promoter_holding") else "N/A",
                     "Institutional %":  round(f.get("institutional_holding",0)*100,1) if f.get("institutional_holding") else "N/A",
                     "Decision":         sc["verdict"][0],
+                    "Cap Type":         f"{sc.get('cap_icon','🔵')} {sc.get('cap_type','Large Cap')}",
                 })
             df_summary = pd.DataFrame(summary_rows)
 
@@ -847,7 +935,7 @@ else:
             if len(all_data) > 1:
                 st.markdown("<div class='section-header'>COMPARISON OVERVIEW</div>", unsafe_allow_html=True)
 
-                display_cols = ["Ticker","Company","Sector","LTP (₹)","Blended Score %","ML Score %","Rules","Governance","Cash Flow","Moat","Decision"]
+                display_cols = ["Ticker","Company","Cap Type","Sector","LTP (₹)","Blended Score %","ML Score %","Rules","Governance","Cash Flow","Moat","Decision"]
                 st.dataframe(df_summary[display_cols], use_container_width=True, hide_index=True)
 
                 # ── Excel Export ──
@@ -917,12 +1005,14 @@ else:
 
                 with tab:
                     # ── Header metrics ──
+                    cap_type = scores.get("cap_type","Large Cap")
+                    cap_icon = scores.get("cap_icon","🔵")
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         st.markdown(f"""<div class='metric-card'>
                             <div class='label'>Company</div>
                             <div class='value' style='font-size:15px'>{fund.get('name','N/A')}</div>
-                            <div class='delta'>{sector}</div>
+                            <div class='delta'>{cap_icon} {cap_type} · {sector}</div>
                         </div>""", unsafe_allow_html=True)
                     with col2:
                         ltp = tech.get("ltp","N/A")
@@ -951,7 +1041,7 @@ else:
                     st.markdown(f"<div class='decision-{verdict_class}'>{verdict_text}</div>", unsafe_allow_html=True)
 
                     # ── Rationale ──
-                    rationale = generate_rationale(fund, tech, cf, scores, benchmark)
+                    rationale = generate_rationale(fund, tech, cf, scores, benchmarks.get(scores.get("cap_type","Large Cap"), {}))
                     st.markdown("<div class='section-header'>WHY THIS DECISION</div>", unsafe_allow_html=True)
                     st.markdown(rationale["summary"])
 
