@@ -365,7 +365,12 @@ def get_stock_data(ticker):
         tech = {}
         try:
             hist  = stock.history(period="1y")
-            nifty = yf.Ticker("^NSEI").history(period="1y")["Close"]
+
+            # Fetch Nifty separately — don't let it crash everything
+            try:
+                nifty = yf.Ticker("^NSEI").history(period="1y")["Close"]
+            except:
+                nifty = None
 
             if not hist.empty and len(hist) >= 50:
                 close   = hist["Close"]
@@ -383,47 +388,49 @@ def get_stock_data(ticker):
                 vol_30      = hist["Volume"].iloc[-30:].mean()
 
                 # ── Risk Metrics ──
-                # Annualised volatility
                 volatility = round(returns.std() * np.sqrt(252) * 100, 2)
 
-                # Max Drawdown
                 rolling_max  = close.cummax()
                 drawdown     = (close - rolling_max) / rolling_max
                 max_drawdown = round(drawdown.min() * 100, 2)
 
-                # Beta vs Nifty 50
+                # Beta — only if Nifty data available
                 beta = None
                 try:
-                    common_idx  = returns.index.intersection(nifty.pct_change().dropna().index)
-                    stock_ret   = returns.loc[common_idx]
-                    nifty_ret   = nifty.pct_change().dropna().loc[common_idx]
-                    if len(common_idx) > 30:
-                        cov    = np.cov(stock_ret, nifty_ret)[0][1]
-                        var    = np.var(nifty_ret)
-                        beta   = round(cov / var, 2) if var != 0 else None
+                    if nifty is not None:
+                        common_idx = returns.index.intersection(nifty.pct_change().dropna().index)
+                        if len(common_idx) > 30:
+                            stock_ret = returns.loc[common_idx]
+                            nifty_ret = nifty.pct_change().dropna().loc[common_idx]
+                            cov  = np.cov(stock_ret, nifty_ret)[0][1]
+                            var  = np.var(nifty_ret)
+                            beta = round(cov / var, 2) if var != 0 else None
                 except:
                     pass
 
-                # Sharpe Ratio (risk-free rate ~6.5% for India)
-                risk_free   = 0.065 / 252
-                excess_ret  = returns.mean() - risk_free
-                sharpe      = round((excess_ret / returns.std()) * np.sqrt(252), 2) if returns.std() != 0 else None
+                # Sharpe Ratio
+                risk_free  = 0.065 / 252
+                excess_ret = returns.mean() - risk_free
+                sharpe     = round((excess_ret / returns.std()) * np.sqrt(252), 2) if returns.std() != 0 else None
 
-                # Value at Risk (95% confidence, 1-day)
+                # Value at Risk (95%)
                 var_95 = round(np.percentile(returns, 5) * 100, 2)
 
-                # Average True Range (ATR) — daily price swing
-                high  = hist["High"]; low = hist["Low"]
-                atr   = round(ta.volatility.AverageTrueRange(high, low, close, window=14).average_true_range().iloc[-1], 2)
-                atr_pct = round((atr / ltp) * 100, 2)
+                # ATR
+                try:
+                    high    = hist["High"]; low = hist["Low"]
+                    atr     = round(ta.volatility.AverageTrueRange(high, low, close, window=14).average_true_range().iloc[-1], 2)
+                    atr_pct = round((atr / ltp) * 100, 2)
+                except:
+                    atr = None; atr_pct = None
 
                 # 1-year return
                 ret_1y = round(((ltp - close.iloc[0]) / close.iloc[0]) * 100, 2)
 
                 # Risk label
-                if volatility < 20:       risk_label = ("🟢 Low Risk",    "low")
-                elif volatility < 35:     risk_label = ("🟡 Medium Risk", "medium")
-                else:                     risk_label = ("🔴 High Risk",   "high")
+                if volatility < 20:   risk_label = ("🟢 Low Risk",    "low")
+                elif volatility < 35: risk_label = ("🟡 Medium Risk", "medium")
+                else:                 risk_label = ("🔴 High Risk",   "high")
 
                 tech = {
                     "ltp":          round(ltp, 2),
@@ -438,7 +445,6 @@ def get_stock_data(ticker):
                     "pct_from_high":round(((ltp - close.max()) / close.max()) * 100, 1),
                     "vol_trend_up": vol_10 > vol_30,
                     "history":      hist,
-                    # Risk metrics
                     "volatility":   volatility,
                     "max_drawdown": max_drawdown,
                     "beta":         beta,
@@ -454,6 +460,7 @@ def get_stock_data(ticker):
 
         return fund, cf, tech
     except Exception as e:
+        st.warning(f"⚠️ Error fetching {ticker}: {str(e)}")
         return None, {}, {}
 
 # ─────────────────────────────────────────────
