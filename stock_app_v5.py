@@ -361,21 +361,70 @@ def get_stock_data(ticker):
         except:
             pass
 
-        # Technicals
+        # Technicals + Risk Metrics
         tech = {}
         try:
-            hist = stock.history(period="1y")
+            hist  = stock.history(period="1y")
+            nifty = yf.Ticker("^NSEI").history(period="1y")["Close"]
+
             if not hist.empty and len(hist) >= 50:
-                close = hist["Close"]
-                rsi   = ta.momentum.RSIIndicator(close, window=14).rsi()
+                close   = hist["Close"]
+                returns = close.pct_change().dropna()
+
+                # Standard indicators
+                rsi         = ta.momentum.RSIIndicator(close, window=14).rsi()
                 macd_obj    = ta.trend.MACD(close)
                 macd_line   = macd_obj.macd()
                 signal_line = macd_obj.macd_signal()
-                ma50  = close.rolling(50).mean().iloc[-1]
-                ma200 = close.rolling(200).mean().iloc[-1] if len(close) >= 200 else None
-                ltp   = close.iloc[-1]
-                vol_10 = hist["Volume"].iloc[-10:].mean()
-                vol_30 = hist["Volume"].iloc[-30:].mean()
+                ma50        = close.rolling(50).mean().iloc[-1]
+                ma200       = close.rolling(200).mean().iloc[-1] if len(close) >= 200 else None
+                ltp         = close.iloc[-1]
+                vol_10      = hist["Volume"].iloc[-10:].mean()
+                vol_30      = hist["Volume"].iloc[-30:].mean()
+
+                # ── Risk Metrics ──
+                # Annualised volatility
+                volatility = round(returns.std() * np.sqrt(252) * 100, 2)
+
+                # Max Drawdown
+                rolling_max  = close.cummax()
+                drawdown     = (close - rolling_max) / rolling_max
+                max_drawdown = round(drawdown.min() * 100, 2)
+
+                # Beta vs Nifty 50
+                beta = None
+                try:
+                    common_idx  = returns.index.intersection(nifty.pct_change().dropna().index)
+                    stock_ret   = returns.loc[common_idx]
+                    nifty_ret   = nifty.pct_change().dropna().loc[common_idx]
+                    if len(common_idx) > 30:
+                        cov    = np.cov(stock_ret, nifty_ret)[0][1]
+                        var    = np.var(nifty_ret)
+                        beta   = round(cov / var, 2) if var != 0 else None
+                except:
+                    pass
+
+                # Sharpe Ratio (risk-free rate ~6.5% for India)
+                risk_free   = 0.065 / 252
+                excess_ret  = returns.mean() - risk_free
+                sharpe      = round((excess_ret / returns.std()) * np.sqrt(252), 2) if returns.std() != 0 else None
+
+                # Value at Risk (95% confidence, 1-day)
+                var_95 = round(np.percentile(returns, 5) * 100, 2)
+
+                # Average True Range (ATR) — daily price swing
+                high  = hist["High"]; low = hist["Low"]
+                atr   = round(ta.volatility.AverageTrueRange(high, low, close, window=14).average_true_range().iloc[-1], 2)
+                atr_pct = round((atr / ltp) * 100, 2)
+
+                # 1-year return
+                ret_1y = round(((ltp - close.iloc[0]) / close.iloc[0]) * 100, 2)
+
+                # Risk label
+                if volatility < 20:       risk_label = ("🟢 Low Risk",    "low")
+                elif volatility < 35:     risk_label = ("🟡 Medium Risk", "medium")
+                else:                     risk_label = ("🔴 High Risk",   "high")
+
                 tech = {
                     "ltp":          round(ltp, 2),
                     "rsi":          round(float(rsi.iloc[-1]), 2),
@@ -389,6 +438,16 @@ def get_stock_data(ticker):
                     "pct_from_high":round(((ltp - close.max()) / close.max()) * 100, 1),
                     "vol_trend_up": vol_10 > vol_30,
                     "history":      hist,
+                    # Risk metrics
+                    "volatility":   volatility,
+                    "max_drawdown": max_drawdown,
+                    "beta":         beta,
+                    "sharpe":       sharpe,
+                    "var_95":       var_95,
+                    "atr":          atr,
+                    "atr_pct":      atr_pct,
+                    "ret_1y":       ret_1y,
+                    "risk_label":   risk_label,
                 }
         except:
             pass
@@ -1058,7 +1117,7 @@ else:
 
                     # ── Score Bars ──
                     st.markdown("<div class='section-header'>SCORE BREAKDOWN</div>", unsafe_allow_html=True)
-                    sc1, sc2, sc3, sc4 = st.columns(4)
+                    sc1, sc2, sc3, sc4, sc5 = st.columns(5)
                     with sc1:
                         st.metric("📊 Fundamentals + Tech", f"{r_s}/{r_m}")
                         st.progress(r_s/r_m)
@@ -1071,9 +1130,14 @@ else:
                     with sc4:
                         st.metric("🏰 Moat", f"{m_s}/{m_m}")
                         st.progress(m_s/m_m)
+                    with sc5:
+                        risk_label = tech.get("risk_label", ("⚪ N/A", "na"))
+                        st.metric("⚠️ Risk Level", risk_label[0])
+                        vol = tech.get("volatility")
+                        st.progress(min(vol/100, 1.0) if vol else 0.0)
 
                     # ── Detail tabs ──
-                    dtab1, dtab2, dtab3, dtab4 = st.tabs(["📈 Price Chart","📋 Fundamentals","💵 Cash Flow","🏛️ Governance"])
+                    dtab1, dtab2, dtab3, dtab4, dtab5 = st.tabs(["📈 Price Chart","📋 Fundamentals","💵 Cash Flow","🏛️ Governance","⚠️ Risk"])
 
                     with dtab1:
                         if "history" in tech:
@@ -1149,3 +1213,93 @@ else:
                             ))
                             fig3.update_layout(paper_bgcolor="#0a0f1e", font=dict(color="#94a3b8"), height=280, margin=dict(l=0,r=0,t=20,b=0))
                             st.plotly_chart(fig3, use_container_width=True)
+
+                    with dtab5:
+                        st.markdown("<div class='section-header'>RISK METRICS</div>", unsafe_allow_html=True)
+
+                        vol      = tech.get("volatility")
+                        mdd      = tech.get("max_drawdown")
+                        beta     = tech.get("beta")
+                        sharpe   = tech.get("sharpe")
+                        var95    = tech.get("var_95")
+                        atr_pct  = tech.get("atr_pct")
+                        ret_1y   = tech.get("ret_1y")
+                        rl       = tech.get("risk_label", ("⚪ N/A","na"))
+
+                        # ── Risk overview cards ──
+                        rm1, rm2, rm3, rm4 = st.columns(4)
+                        with rm1:
+                            st.markdown(f"""<div class='metric-card'>
+                                <div class='label'>Risk Level</div>
+                                <div class='value' style='font-size:18px'>{rl[0]}</div>
+                                <div class='delta'>Based on annualised volatility</div>
+                            </div>""", unsafe_allow_html=True)
+                        with rm2:
+                            st.markdown(f"""<div class='metric-card'>
+                                <div class='label'>1-Year Return</div>
+                                <div class='value' style='color:{"#4ade80" if ret_1y and ret_1y>0 else "#f87171"}'>{ret_1y}%</div>
+                                <div class='delta'>Price change last 12 months</div>
+                            </div>""", unsafe_allow_html=True)
+                        with rm3:
+                            st.markdown(f"""<div class='metric-card'>
+                                <div class='label'>Sharpe Ratio</div>
+                                <div class='value'>{sharpe if sharpe else 'N/A'}</div>
+                                <div class='delta'>>1 good · >2 excellent</div>
+                            </div>""", unsafe_allow_html=True)
+                        with rm4:
+                            st.markdown(f"""<div class='metric-card'>
+                                <div class='label'>Beta vs Nifty</div>
+                                <div class='value'>{beta if beta else 'N/A'}</div>
+                                <div class='delta'>>1 more volatile than market</div>
+                            </div>""", unsafe_allow_html=True)
+
+                        st.markdown("")
+
+                        # ── Risk metrics table ──
+                        risk_rows = [
+                            ["Annualised Volatility",  f"{vol}%" if vol else "N/A",
+                             "<20% Low · 20–35% Medium · >35% High",
+                             "🟢" if vol and vol<20 else ("🟡" if vol and vol<35 else "🔴")],
+                            ["Max Drawdown (1Y)",      f"{mdd}%" if mdd else "N/A",
+                             ">-20% acceptable · <-40% high risk",
+                             "🟢" if mdd and mdd>-20 else ("🟡" if mdd and mdd>-40 else "🔴")],
+                            ["Beta vs Nifty 50",       str(beta) if beta else "N/A",
+                             "<0.8 defensive · 0.8–1.2 market · >1.2 aggressive",
+                             "🟢" if beta and beta<0.8 else ("🟡" if beta and beta<=1.2 else "🔴")],
+                            ["Sharpe Ratio",           str(sharpe) if sharpe else "N/A",
+                             ">1 good · >2 excellent · <0 losing",
+                             "🟢" if sharpe and sharpe>1 else ("🟡" if sharpe and sharpe>0 else "🔴")],
+                            ["Value at Risk (95%,1D)", f"{var95}%" if var95 else "N/A",
+                             "Max expected daily loss 95% of days",
+                             "🟢" if var95 and var95>-2 else ("🟡" if var95 and var95>-4 else "🔴")],
+                            ["ATR % (Daily Swing)",    f"{atr_pct}%" if atr_pct else "N/A",
+                             "Average daily price range as % of price",
+                             "🟢" if atr_pct and atr_pct<2 else ("🟡" if atr_pct and atr_pct<4 else "🔴")],
+                        ]
+                        st.dataframe(pd.DataFrame(risk_rows, columns=["Metric","Value","Interpretation","Signal"]),
+                                     use_container_width=True, hide_index=True)
+
+                        # ── Drawdown chart ──
+                        if "history" in tech:
+                            hist_r = tech["history"]["Close"]
+                            rolling_max = hist_r.cummax()
+                            dd_series   = ((hist_r - rolling_max) / rolling_max) * 100
+                            fig_dd = go.Figure()
+                            fig_dd.add_trace(go.Scatter(
+                                x=dd_series.index, y=dd_series,
+                                mode="lines", fill="tozeroy",
+                                name="Drawdown %",
+                                line=dict(color="#f87171", width=1.5),
+                                fillcolor="rgba(248,113,113,0.15)"
+                            ))
+                            fig_dd.update_layout(
+                                paper_bgcolor="#0a0f1e", plot_bgcolor="#0d1326",
+                                font=dict(color="#94a3b8"),
+                                xaxis=dict(gridcolor="#1e2d4a"),
+                                yaxis=dict(gridcolor="#1e2d4a", title="Drawdown %"),
+                                title=dict(text="Drawdown from Peak (1 Year)", font=dict(color="#94a3b8")),
+                                height=280, margin=dict(l=0,r=0,t=40,b=0)
+                            )
+                            st.plotly_chart(fig_dd, use_container_width=True)
+
+                        st.caption("⚠️ Risk metrics are based on 1-year historical data. Past volatility does not guarantee future risk levels.")
