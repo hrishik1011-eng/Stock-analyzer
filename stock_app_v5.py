@@ -163,47 +163,55 @@ div[data-testid="stSidebarContent"] {
 
 # ─────────────────────────────────────────────
 # 3-INDEX BENCHMARK FRAMEWORK
-# Large Cap → Nifty 50
-# Mid Cap   → Nifty Midcap 150
-# Small Cap → Nifty Smallcap 250
+# Large Cap → Nifty 50 peers
+# Mid Cap   → Nifty Midcap 150 peers
+# Small Cap → Nifty Smallcap 250 peers
+# Each stock is silently compared to its own peer group
 # ─────────────────────────────────────────────
 
-# Market cap thresholds (INR)
-LARGE_CAP_THRESHOLD = 200_000_000_000   # ₹20,000 Cr
-MID_CAP_THRESHOLD   =  50_000_000_000   # ₹5,000 Cr
+# Real-world thresholds based on current Indian market (2025-26)
+# SEBI top 100 = Large Cap, 101-250 = Mid Cap, rest = Small Cap
+# In today's market these roughly translate to:
+LARGE_CAP_THRESHOLD = 500_000_000_000   # ₹50,000 Cr
+MID_CAP_THRESHOLD   = 150_000_000_000   # ₹15,000 Cr
 
+# ── Large Cap benchmark — Nifty 50 stocks ──
 LARGE_CAP_TICKERS = {
     "Banking & Finance":      ["HDFCBANK.NS","ICICIBANK.NS","SBIN.NS","KOTAKBANK.NS","AXISBANK.NS"],
-    "IT & Technology":        ["TCS.NS","INFY.NS","WIPRO.NS"],
-    "Energy & Oil":           ["RELIANCE.NS","ONGC.NS","BPCL.NS"],
+    "IT & Technology":        ["TCS.NS","INFY.NS","WIPRO.NS","HCLTECH.NS"],
+    "Energy & Oil":           ["RELIANCE.NS","ONGC.NS","BPCL.NS","NTPC.NS"],
     "FMCG & Consumer":        ["HINDUNILVR.NS","ITC.NS","NESTLEIND.NS","BRITANNIA.NS"],
-    "Auto":                   ["MARUTI.NS","TATAMOTORS.NS","M&M.NS"],
+    "Auto":                   ["MARUTI.NS","TATAMOTORS.NS","M&M.NS","BAJAJ-AUTO.NS"],
     "Pharma":                 ["SUNPHARMA.NS","DRREDDY.NS","CIPLA.NS"],
-    "Industrials & Infra":    ["LT.NS","POWERGRID.NS","NTPC.NS"],
+    "Industrials & Infra":    ["LT.NS","POWERGRID.NS","ADANIPORTS.NS"],
     "Metals & Materials":     ["TATASTEEL.NS","HINDALCO.NS","JSWSTEEL.NS"],
     "Telecom":                ["BHARTIARTL.NS"],
     "Consumer Discretionary": ["TITAN.NS","ASIANPAINT.NS"],
     "Cement":                 ["ULTRACEMCO.NS","GRASIM.NS"],
 }
 
+# ── Mid Cap benchmark — Nifty Midcap 150 stocks ──
+# These are solid, well-known midcaps that trade actively on Yahoo Finance
 MIDCAP_TICKERS = {
-    "Banking & Finance":      ["FEDERALBNK.NS","IDFCFIRSTB.NS","BANDHANBNK.NS"],
-    "IT & Technology":        ["MPHASIS.NS","LTIM.NS","PERSISTENT.NS"],
-    "Pharma":                 ["TORNTPHARM.NS","ALKEM.NS","LALPATHLAB.NS"],
-    "Auto & Ancillaries":     ["MOTHERSON.NS","BALKRISIND.NS","ESCORTS.NS"],
-    "Consumer":               ["VOLTAS.NS","WHIRLPOOL.NS","TRENT.NS"],
-    "Industrials":            ["CUMMINSIND.NS","THERMAX.NS","BHEL.NS"],
-    "Chemicals":              ["PIIND.NS","AAVAS.NS","ATUL.NS"],
-    "Real Estate":            ["GODREJPROP.NS","OBEROIRLTY.NS"],
+    "Banking & Finance":      ["FEDERALBNK.NS","IDFCFIRSTB.NS","BANDHANBNK.NS","MUTHOOTFIN.NS"],
+    "IT & Technology":        ["MPHASIS.NS","PERSISTENT.NS","COFORGE.NS","KPITTECH.NS"],
+    "Pharma":                 ["TORNTPHARM.NS","ALKEM.NS","AUROPHARMA.NS","LALPATHLAB.NS"],
+    "Auto & Ancillaries":     ["BALKRISIND.NS","ESCORTS.NS","ASHOKLEY.NS","TVSMOTOR.NS"],
+    "Consumer":               ["VOLTAS.NS","TRENT.NS","RELAXO.NS"],
+    "Industrials":            ["CUMMINSIND.NS","THERMAX.NS","BHEL.NS","SIEMENS.NS"],
+    "Chemicals":              ["PIIND.NS","ATUL.NS","DEEPAKNTR.NS"],
+    "Real Estate":            ["GODREJPROP.NS","OBEROIRLTY.NS","PHOENIXLTD.NS"],
 }
 
+# ── Small Cap benchmark — Nifty Smallcap 250 stocks ──
+# Carefully chosen stocks known to have Yahoo Finance data
 SMALLCAP_TICKERS = {
-    "Banking & Finance":      ["RBLBANK.NS","UJJIVANSFB.NS"],
-    "IT & Technology":        ["TANLA.NS","INTELLECT.NS"],
-    "Pharma":                 ["GRANULES.NS","SUVEN.NS"],
-    "Consumer":               ["VSTIND.NS","SAPPHIRE.NS"],
-    "Industrials":            ["GRINDWELL.NS","RATNAMANI.NS"],
-    "Chemicals":              ["FINEORG.NS","NAVINFLUOR.NS"],
+    "Banking & Finance":      ["RBLBANK.NS","UJJIVANSFB.NS","EQUITASBNK.NS"],
+    "IT & Technology":        ["TANLA.NS","INTELLECT.NS","MASTEK.NS"],
+    "Pharma":                 ["GRANULES.NS","GLENMARK.NS","JBCHEPHARM.NS"],
+    "Consumer":               ["VSTIND.NS","NYKAA.NS"],
+    "Industrials":            ["GRINDWELL.NS","RATNAMANI.NS","WELCORP.NS"],
+    "Chemicals":              ["FINEORG.NS","NAVINFLUOR.NS","GALAXYSURF.NS"],
 }
 
 ALL_LARGE_TICKERS  = [t for v in LARGE_CAP_TICKERS.values()  for t in v]
@@ -851,31 +859,12 @@ else:
     if not tickers:
         st.error("Please enter at least one ticker symbol.")
     else:
-        # Build all 3 benchmarks
-        with st.spinner("📊 Building 3-index benchmark (Large/Mid/Small cap)... first time takes ~90 seconds"):
+        # Build all 3 benchmarks silently
+        with st.spinner("📊 Building peer benchmarks for Large / Mid / Small cap... (~90 seconds first time)"):
             benchmarks = build_all_benchmarks()
 
-        with st.expander("📌 View Benchmark Details — 3-Index Framework", expanded=False):
-            st.markdown("Each stock is automatically classified as **Large / Mid / Small cap** based on market cap, then compared against the appropriate index benchmark.")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.markdown("**🔵 Large Cap (Nifty 50)**")
-                st.markdown(f"Market cap ≥ ₹20,000 Cr")
-                for s, tl in LARGE_CAP_TICKERS.items():
-                    st.markdown(f"*{s}:* {', '.join(t.replace('.NS','') for t in tl)}")
-            with c2:
-                st.markdown("**🟡 Mid Cap (Nifty Midcap 150)**")
-                st.markdown(f"Market cap ₹5,000–20,000 Cr")
-                for s, tl in MIDCAP_TICKERS.items():
-                    st.markdown(f"*{s}:* {', '.join(t.replace('.NS','') for t in tl)}")
-            with c3:
-                st.markdown("**🟢 Small Cap (Nifty Smallcap 250)**")
-                st.markdown(f"Market cap < ₹5,000 Cr")
-                for s, tl in SMALLCAP_TICKERS.items():
-                    st.markdown(f"*{s}:* {', '.join(t.replace('.NS','') for t in tl)}")
-
         total_stocks = len(ALL_LARGE_TICKERS) + len(ALL_MID_TICKERS) + len(ALL_SMALL_TICKERS)
-        st.success(f"✅ Benchmarks ready — {total_stocks} stocks across 3 indices")
+        st.success(f"✅ Benchmarks ready — {total_stocks} peer stocks across 🔵 Large / 🟡 Mid / 🟢 Small cap indices")
 
         # ── Fetch all stock data first ──
         all_data    = {}
