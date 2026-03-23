@@ -789,15 +789,15 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("### Enter Stock Tickers")
-    st.markdown("Use NSE format: `SYMBOL.NS`")
+    st.markdown("Just type the symbol — `.NS` is added automatically")
 
     # Quick pick buttons load into session state
     st.markdown("**Quick picks:**")
     quick = {
-        "🏦 Banking": "HDFCBANK.NS\nICICIBANK.NS\nSBIN.NS",
-        "💻 IT":      "TCS.NS\nINFY.NS\nWIPRO.NS",
-        "⚡ Energy":  "RELIANCE.NS\nONGC.NS\nNTPC.NS",
-        "🚗 Auto":    "MARUTI.NS\nTATAMOTORS.NS\nM&M.NS",
+        "🏦 Banking": "HDFCBANK\nICICIBANK\nSBIN",
+        "💻 IT":      "TCS\nINFY\nWIPRO",
+        "⚡ Energy":  "RELIANCE\nONGC\nNTPC",
+        "🚗 Auto":    "MARUTI\nTATAMOTORS\nM&M",
     }
     cols = st.columns(2)
     for i, (label, preset) in enumerate(quick.items()):
@@ -805,7 +805,7 @@ with st.sidebar:
             st.session_state.quick_load = preset
 
     # Text area — seeded by quick pick if clicked, otherwise blank/previous
-    default_text = st.session_state.quick_load if st.session_state.quick_load else "RELIANCE.NS\nTATAMOTORS.NS\nZOMATO.NS"
+    default_text = st.session_state.quick_load if st.session_state.quick_load else "RELIANCE\nTATAMOTORS\nZOMATO"
     raw_input = st.text_area(
         "One ticker per line:",
         value=default_text,
@@ -817,12 +817,15 @@ with st.sidebar:
 
     # Analyze button locks in whatever is currently in the text area
     if st.button("🔍 Analyze Stocks", type="primary"):
-        st.session_state.confirmed_tickers = [
-            t.strip().upper()
-            for t in raw_input.strip().split("\n")
-            if t.strip()
-        ]
-        st.session_state.quick_load = ""  # reset quick pick after analyzing
+        raw_tickers = [t.strip().upper() for t in raw_input.strip().split("\n") if t.strip()]
+        # Auto-append .NS if not already there
+        fixed_tickers = []
+        for t in raw_tickers:
+            if not t.endswith(".NS") and not t.endswith(".BO"):
+                t = t + ".NS"
+            fixed_tickers.append(t)
+        st.session_state.confirmed_tickers = fixed_tickers
+        st.session_state.quick_load = ""
 
     # Always show what will actually be analyzed
     if st.session_state.confirmed_tickers:
