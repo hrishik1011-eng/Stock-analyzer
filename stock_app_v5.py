@@ -599,11 +599,19 @@ else:
                 st.markdown(rat["summary"])
                 rc1,rc2=st.columns(2)
                 with rc1:
-                    if rat["positives"]: st.markdown("**✅ Working in its favour:**"); [st.markdown(f"- {p}") for p in rat["positives"]]
-                    if rat["neutrals"]:  st.markdown("**⚠️ Mixed signals:**");        [st.markdown(f"- {n}") for n in rat["neutrals"]]
+                    if rat["positives"]:
+                        st.markdown("**✅ Working in its favour:**")
+                        for p in rat["positives"]: st.markdown(f"- {p}")
+                    if rat["neutrals"]:
+                        st.markdown("**⚠️ Mixed signals:**")
+                        for n in rat["neutrals"]: st.markdown(f"- {n}")
                 with rc2:
-                    if rat["negatives"]: st.markdown("**❌ Key concerns:**");          [st.markdown(f"- {n}") for n in rat["negatives"]]
-                    st.markdown("---"); st.markdown("**🤖 ML:**"); st.markdown(rat["ml_explanation"])
+                    if rat["negatives"]:
+                        st.markdown("**❌ Key concerns:**")
+                        for n in rat["negatives"]: st.markdown(f"- {n}")
+                    st.markdown("---")
+                    st.markdown("**🤖 ML:**")
+                    st.markdown(rat["ml_explanation"])
 
                 st.markdown("<div class='section-header'>SCORE BREAKDOWN</div>",unsafe_allow_html=True)
                 sb1,sb2,sb3,sb4,sb5=st.columns(5)
